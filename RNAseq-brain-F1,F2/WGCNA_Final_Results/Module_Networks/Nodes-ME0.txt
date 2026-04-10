@@ -1,0 +1,8 @@
+nodeName	altName	nodeAttr[nodesPresent, ]
+Blvrb	Blvrb	grey
+LOC102919665	LOC102919665	grey
+Cga	Cga	grey
+LOC143272544	LOC143272544	grey
+LOC102919867	LOC102919867	grey
+Tshb	Tshb	grey
+LOC102916382	LOC102916382	grey
