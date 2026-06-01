@@ -58,6 +58,25 @@ entropy_data <- RNA_seq_long %>%
 # Linear model to isolate noise (Residuals)
 fit_global <- lm(Raw_Entropy ~ Sex + Tissue, data = entropy_data)
 
+
+# 1. Print the full diagnostic summary to the console
+summary(fit_global)
+
+# 2. Extract and print the exact R-squared and P-value
+model_summary <- summary(fit_global)
+
+# Extract Adjusted R-squared
+adj_r2 <- model_summary$adj.r.squared
+
+# Calculate the overall model P-value from the F-statistic
+f_stat <- model_summary$fstatistic
+model_p_value <- pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE)
+
+# Print the results nicely
+cat("\n--- Linear Model Diagnostics ---\n")
+cat("Adjusted R-squared:", round(adj_r2, 4), "\n")
+cat("Overall Model P-value:", signif(model_p_value, 4), "\n")
+
 entropy_data <- entropy_data %>%
   mutate(
     Adj_Global = resid(fit_global),
