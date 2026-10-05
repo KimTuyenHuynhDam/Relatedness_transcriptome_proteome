@@ -1,0 +1,8 @@
+# Local analysis sessions and editor/Office temporary files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+~$*
+.DS_Store
+Thumbs.db

@@ -1,3 +1,7 @@
+# Abundance-weighted Pc within sex and brain-region groups.
+# Filter TPM > 0 across all input specimens before selecting retained specimens.
+# Mean_TPM stores partner-gene mean log2(TPM + 1); self-correlations are included.
+
 library(tidyverse)
 library(readxl)
 library(glue)
@@ -9,7 +13,7 @@ library(dplyr)
 dir.create("Pc_analysis",  recursive = TRUE, showWarnings = FALSE)
 dir.create("Output",  recursive = TRUE, showWarnings = FALSE)
 
-# 1. Filtering Step: Keep genes expressed in at least 80% of samples
+# Filter settings: the active strict filter follows the commented alternatives
 
 RNA_seq = read.csv("./Rawdata/20260107tpm_All.csv") %>% select(-c(66, 67)) 
 # # Apply log2 transformation with a pseudocount
@@ -91,14 +95,14 @@ RNA_seq_long_all <- RNA_seq_strict_clean  %>%
 
 # --- Abundance-Weighted Pc Calculation Script ---
 
-# 1. PRE-CALCULATE MEAN TPM PER GENE/GROUP/RELATEDNESS
+# 1. PRE-CALCULATE MEAN LOG2(TPM+1) PER GENE/STRATUM/GENERATION
 # This serves as the 'Weighting Factor'
 abundance_weights <- RNA_seq_long_all %>%
   group_by(Gene, Grouping, Relatedness) %>%
   summarize(Mean_TPM = mean(Expression, na.rm = TRUE), .groups = "drop")
 
 
-# 2. REVISED FUNCTION: Weighted Pc Calculation
+# 2. Weighted Pc calculation
 calculate_weighted_pc_by_grouping <- function(expr_data, weight_data, group_label, level_a = "0", level_b = "50") {
   message("→ Processing group (Weighted): ", group_label)
   
@@ -188,7 +192,7 @@ ggsave("./Pc_analysis/Weighted_Pc_Violin.png", width = 8, height = 6)
 # Define the list of thresholds requested
 thresholds <- c(0.02, 0.05, 0.1, 0.15, 0.20, 0.25)
 
-# 1. UPDATED FUNCTION for Weighted results
+# 1. Plot ranked weighted Pc results
 plot_ranked_weighted_extremes <- function(pc_df, top_percent, output_dir = "./Pc_analysis/") {
   
   # Ensure the directory exists
@@ -211,13 +215,13 @@ plot_ranked_weighted_extremes <- function(pc_df, top_percent, output_dir = "./Pc
   # Create the plot
   p <- ggplot(ranked, aes(x = Rank, y = Weighted_Pc, color = Grouping)) +
     geom_line(size = 1.2) +
-    # Note: Weighted Pc often has a wider range than standard Pc
+    # Pc is a Pearson correlation of weighted rows and remains bounded by -1 and 1
     scale_y_continuous(limits = c(min(ranked$Weighted_Pc, na.rm=T), max(ranked$Weighted_Pc, na.rm=T))) +
     labs(
       x = "Ranked Transcripts (Extremes)",
       y = expression("Abundance-Weighted " * P[c]),
-      title = glue::glue("Extremes of Functional Preservation ({top_percent * 100}%)"),
-      subtitle = "Weighted by Mean TPM across Relatedness groups"
+      title = glue::glue("Ranked weighted Pc tails ({top_percent * 100}%)"),
+      subtitle = "Partner-gene weights: mean log2(TPM+1) within each generation and stratum"
     ) +
     theme_minimal(base_size = 14) +
     theme(
@@ -237,7 +241,7 @@ plot_ranked_weighted_extremes <- function(pc_df, top_percent, output_dir = "./Pc
 
 
 # 2. ITERATE THROUGH ALL REQUESTED THRESHOLDS
-# This uses 'pc_weighted_results' from your previous calculation
+# Use 'pc_weighted_results' calculated above
 map(thresholds, ~ plot_ranked_weighted_extremes(pc_weighted_results, .x))
 
 message("All extreme-rank plots for Weighted Pc have been generated and saved.")

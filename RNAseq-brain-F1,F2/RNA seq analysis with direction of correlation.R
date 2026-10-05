@@ -1,3 +1,6 @@
+# Gene-wise nested linear models of raw TPM, adjusted for sex and brain region.
+# Correlation_direction records the sign of the F2-minus-F1 coefficient.
+# The main workbook exports all genes; Adjusted_Expression.csv uses BH < 0.05.
 
 library(openxlsx)
 library(tidyverse)
@@ -25,7 +28,7 @@ mice_info = read.xlsx("./Rawdata/mice information.xlsx") %>%
 
 
 # Merge RNA_seq and mice_info
-# Assume the column "X" in RNA_seq corresponds to "Analysis.ID" in mice_info
+# X stores gene IDs; specimen column names are pivoted to Analysis.ID for the metadata join
 RNA_seq_long <- RNA_seq %>%
   pivot_longer(cols = -X, names_to = "Analysis.ID", values_to = "Expression") %>%
   inner_join(mice_info, by = c("Analysis.ID" = "Analysis.ID")) %>% rename(Gene = X)
@@ -38,7 +41,7 @@ RNA_seq_long <- RNA_seq_long %>%
     Tissue = as.factor(Tissue)
   )
 
-# Extend nested model to extract coefficient and direction of correlation
+# Compare nested ordinary models and extract the F2-minus-F1 coefficient direction
 nested_anova <- RNA_seq_long %>%
   group_by(Gene) %>%
   nest() %>%
@@ -77,7 +80,7 @@ write.xlsx(filtered_nested_anova ,
 ##################
 
 
-# Get top significant genes (FDR < 0.05)
+# Adjusted-expression export subset (BH < 0.05)
 significant_genes <- filtered_nested_anova %>%
   filter(FDR < 0.05) %>%
   pull(Gene)  # Extract list of significant genes
@@ -95,7 +98,7 @@ RNA_seq_long_adjusted <- RNA_seq_long %>%
   
   # Fit models within the nested data
   mutate(
-    # Fit full model (Expression ~ Sex + Tissue) for each gene
+    # Fit the sex-and-tissue adjustment model for each gene
     adjusted_model = map(data, ~ lm(Expression ~ Sex + Tissue, data = .)),
     
     # Extract residuals (Expression adjusted for Sex & Tissue)

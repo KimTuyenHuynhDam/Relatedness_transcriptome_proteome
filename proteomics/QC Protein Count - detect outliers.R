@@ -1,5 +1,7 @@
+# Detected protein counts and within-generation IQR thresholds.
+
 # ==============================================================================
-# DEFINITIVE QC: TOTAL PROTEINS & STATISTICAL OUTLIER THRESHOLDS
+# DESCRIPTIVE QC: POSITIVE-INTENSITY COUNTS & WITHIN-GENERATION IQR RULE
 # ==============================================================================
 library(tidyverse)
 library(openxlsx)
@@ -53,13 +55,13 @@ p_qc_stats <- ggplot(count_df, aes(x = Proteins_Identified, y = reorder(Mouse_ID
   
   # Add text labels right next to the dashed lines to state the exact cutoff number
   geom_text(data = iqr_thresholds, 
-            aes(x = Lower_Bound, y = 1.5, label = paste("Outlier Threshold:", round(Lower_Bound, 0))), 
+            aes(x = Lower_Bound, y = 3.5, label = paste("Lower IQR fence:", round(Lower_Bound, 0))), 
             angle = 90, vjust = -1, size = 4.5, fontface = "italic", color = "black") +
   
   theme_pubr(base_size = 14) +
   scale_x_continuous(expand = expansion(mult = c(0, 0.2))) +
-  labs(title = "QC: Proteomic Detection & Outlier Analysis",
-       subtitle = "Dashed lines represent the strict lower bound (Q1 - 1.5 * IQR) for each respective genotype.",
+  labs(title = "Detected protein groups and within-generation IQR rule",
+       subtitle = "Dashed lines: Q1 - 1.5 * IQR within each generation.",
        x = "Number of Proteins Detected (>0)",
        y = "Mouse ID") +
   theme(legend.position = "none", # Legend not needed since we faceted

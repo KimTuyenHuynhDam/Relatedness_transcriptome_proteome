@@ -1,3 +1,7 @@
+# Shannon entropy and entropy-residual analysis.
+# The instability score is the absolute residual from H ~ Sex + Tissue.
+# Levene tests use signed residuals; permutations shuffle generation labels within sex.
+
 # ==============================================================================
 # FINAL DECANALIZATION ANALYSIS & EXPORT PIPELINE
 # ==============================================================================
@@ -25,7 +29,7 @@ RNA_seq <- read.csv("./Rawdata/20260107tpm_All.csv") %>% dplyr:: select(-c(66, 6
 #   filter(X %in% genes_with_zero_presence)
 
 # Load metadata and remove dendrogram-identified outliers
-# F2Fc_Rep6 and F2Mm_Rep3 branched incorrectly, suggesting technical artifacts
+# Exclude F2Fc_Rep6 and F2Mm_Rep3 based on tissue-clustering discrepancies
 mice_info <- read.xlsx("./Rawdata/mice information.xlsx") %>% 
   filter(!Analysis.ID %in% c('F2Fc_Rep6', 'F2Mm_Rep3'))
 
@@ -55,7 +59,7 @@ entropy_data <- RNA_seq_long %>%
 
 
 
-# Linear model to isolate noise (Residuals)
+# Fit entropy as a function of sex and brain region
 fit_global <- lm(Raw_Entropy ~ Sex + Tissue, data = entropy_data)
 
 
@@ -108,34 +112,34 @@ p_emp_m <- calc_emp_p(entropy_data, "M")
 # --- 3. GRAPHICAL EXPORTS ---
 # --- 1. GLOBAL STATE VS. GLOBAL INSTABILITY ---
 
-# Plot A: Global Raw Entropy (The 'State' remains stable)
+# Plot A: Raw Shannon entropy
 g_global_entropy <- ggboxplot(entropy_data, x = "Relatedness", y = "Raw_Entropy", 
                               fill = "Relatedness", palette = "npg", add = "jitter") +
-  stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5) +
-  labs(title = "Global Transcriptomic State (Raw Entropy)",
-       subtitle = "The absolute magnitude of complexity is preserved",
-       y = "Shannon Entropy (H)", x = "Relatedness Group") +
-  theme_minimal()
+  stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, size = 5) +
+  labs(title = "Shannon entropy of transcript abundance",
+       subtitle = "F1 and F2 specimens",
+       y = "Shannon Entropy (H)", x = "Generation code (0 = F1; 50 = F2)") +
+  theme_minimal(base_size = 14)
 ggsave("Entropy_Analysis_Results/G1_Global_Raw_Entropy.png", g_global_entropy, width = 6, height = 6)
 
-# Plot B: Global Residual Entropy (The 'Spread' centers at zero)
+# Plot B: Signed residuals from the pooled model
 g_global_residual_entropy <- ggboxplot(entropy_data, x = "Relatedness", y = "Adj_Global", 
                                        fill = "Relatedness", palette = "npg", add = "jitter") +
-  stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5) +
-  labs(title = "Global Residual Entropy",
-       subtitle = "Means are centered at zero, but variance differs",
-       y = "Residual Entropy (Adj for Sex/Tissue)", x = "Relatedness Group") +
-  theme_minimal()
+  stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, size = 5) +
+  labs(title = "Signed entropy residuals",
+       subtitle = "Residuals from pooled H ~ Sex + Tissue",
+       y = "Residual Entropy (Adj for Sex/Tissue)", x = "Generation code (0 = F1; 50 = F2)") +
+  theme_minimal(base_size = 14)
 ggsave("Entropy_Analysis_Results/G2_Global_Residual_Entropy.png", g_global_residual_entropy, width = 6, height = 6)
 
-# Plot C: Global Instability Score (The 'Decanalization Signal')
+# Plot C: Absolute entropy residuals
 g_global_instability <- ggboxplot(entropy_data, x = "Relatedness", y = "Instability_Score", 
                                   fill = "Relatedness", palette = "npg", add = "jitter") +
-  stat_compare_means(method = "wilcox.test", label = "p.format", label.x = 1.5) +
-  labs(title = "Global Transcriptomic Instability",
-       subtitle = "Significant increase in stochastic noise (Levene p = 0.0168)",
-       y = "Instability Score (|Residual|)", x = "Relatedness Group") +
-  theme_minimal()
+  stat_compare_means(method = "wilcox.test", label = "p.format", label.x = 1.5, size = 5) +
+  labs(title = "Absolute entropy residuals",
+       subtitle = "Wilcoxon rank-sum comparison",
+       y = "Absolute entropy residual", x = "Generation code (0 = F1; 50 = F2)") +
+  theme_minimal(base_size = 14)
 ggsave("Entropy_Analysis_Results/G3_Global_Instability.png", g_global_instability, width = 6, height = 6)
 
 #GLOBAL LEVENE PLOT (THE SYSTEM-WIDE VIEW)
@@ -144,12 +148,12 @@ global_p <- leveneTest(Adj_Global ~ Relatedness, data = entropy_data)$`Pr(>F)`[1
 
 g_global <- ggboxplot(entropy_data, x = "Relatedness", y = "Instability_Score", 
                       fill = "Relatedness", palette = "npg", add = "jitter") +
-  stat_compare_means(method = "wilcox.test", label = "p.format", label.x = 1.5) +
-  labs(title = "Global Transcriptomic Instability", 
-       subtitle = paste("Global Levene's Test: p =", round(global_p, 4)),
-       y = "Instability Score (|Residual Entropy|)",
-       x = "Relatedness (0 vs 50)") +
-  theme_minimal()
+  stat_compare_means(method = "wilcox.test", label = "p.format", label.x = 1.5, size = 5) +
+  labs(title = "Absolute entropy residuals", 
+       subtitle = paste("Signed-residual Levene P =", round(global_p, 4)),
+       y = "Absolute entropy residual",
+       x = "Generation code (0 = F1; 50 = F2)") +
+  theme_minimal(base_size = 14)
 
 
 ggsave("Entropy_Analysis_Results/Global_Levene_Plot.png", g_global, width = 6, height = 6, dpi = 300)
@@ -159,43 +163,51 @@ ggsave("Entropy_Analysis_Results/Global_Levene_Plot.png", g_global, width = 6, h
 
 g1 <- ggboxplot(entropy_data, x = "Relatedness", y = "Raw_Entropy", 
                 fill = "Relatedness", palette = "npg", facet.by = c("Sex", "Tissue")) +
-  stat_compare_means(method = "t.test", label = "p.format") +
-  labs(title = "Shannon Entropy by Relatedness", y = "Raw Entropy (H)")
+  stat_compare_means(method = "t.test", label = "p.format", size = 5) +
+  labs(title = "Shannon entropy by generation", y = "Raw Entropy (H)") +
+  facet_grid(Sex ~ Tissue, labeller = labeller(Sex = c(F = "Female", M = "Male"))) +
+  theme(text = element_text(size = 14),
+        axis.text = element_text(size = 14),
+        strip.text = element_text(size = 14))
 ggsave("Entropy_Analysis_Results/Raw_Entropy_Boxplots.png", g1, width = 8, height = 8, dpi = 300)
 
-# Density Distribution (Visualizing Decanalization)
+# Density of signed entropy residuals
 g2 <- ggplot(entropy_data, aes(x = Adj_Global, fill = Relatedness)) +
   geom_density(alpha = 0.5) +
   facet_wrap(~Sex, labeller = as_labeller(c(
-    F = paste0("Females (Empirical p = ", round(p_emp_f, 4), ")"),
-    M = paste0("Males (Empirical p = ", round(p_emp_m, 4), ")")
+    F = paste0("Females (permutation P = ", round(p_emp_f, 4), ")"),
+    M = paste0("Males (permutation P = ", round(p_emp_m, 4), ")")
   ))) +
-  theme_minimal() +
+  theme_minimal(base_size = 14) +
   scale_fill_manual(values = c("#E41A1C", "#377EB8")) +
-  labs(title = "Residual Entropy Distribution", x = "Adjusted Entropy (Noise Component)")
+  labs(title = "Residual Entropy Distribution", x = "Signed entropy residual")
 ggsave("Entropy_Analysis_Results/Density_Decanalization.png", g2, width = 10, height = 5, dpi = 300)
 
-# Instability Score (Tissue-Specific Noise)
+# Absolute residuals by sex and region; Wilcoxon comparisons
 
 g3 <- ggboxplot(entropy_data, x = "Relatedness", y = "Instability_Score", 
                 fill = "Relatedness", palette = "npg", facet.by = c("Sex", "Tissue"), add = "jitter") +
-  stat_compare_means(method = "wilcox.test", label = "p.format") +
-  labs(title = "Transcriptional Instability Scores", y = "Instability Score (|Residual|)")
+  stat_compare_means(method = "wilcox.test", label = "p.format", size = 5) +
+  labs(title = "Absolute entropy residuals by sex and region", y = "Absolute entropy residual") +
+  facet_grid(Sex ~ Tissue, labeller = labeller(Sex = c(F = "Female", M = "Male"))) +
+  theme(text = element_text(size = 14),
+        axis.text = element_text(size = 14),
+        strip.text = element_text(size = 14))
 ggsave("Entropy_Analysis_Results/Instability_Scores.png", g3, width = 8, height = 8, dpi = 300)
 
 
 g_instability_density <- ggplot(entropy_data, aes(x = Instability_Score, fill = Relatedness)) +
   geom_density(alpha = 0.5) +
   facet_wrap(~Sex, labeller = as_labeller(c(
-    F = paste0("Females (Empirical p = ", round(p_emp_f, 4), ")"),
-    M = paste0("Males (Empirical p = ", round(p_emp_m, 4), ")")
+    F = paste0("Females (permutation P = ", round(p_emp_f, 4), ")"),
+    M = paste0("Males (permutation P = ", round(p_emp_m, 4), ")")
   ))) +
-  theme_minimal() +
+  theme_minimal(base_size = 14) +
   scale_fill_manual(values = c("#E41A1C", "#377EB8")) +
   labs(
-    title = "Distribution of Transcriptional Instability Scores",
-    subtitle = "Visualizing the 'long tail' of regulatory failure (Decanalization)",
-    x = "Instability Score (|Residual Entropy|)",
+    title = "Distribution of absolute entropy residuals",
+    subtitle = "By sex; P values from signed-residual permutation tests",
+    x = "Absolute entropy residual",
     y = "Density"
   )
 
@@ -248,8 +260,8 @@ g_cv <- report_table %>%
   # Expand y-axis slightly to ensure text has "breathing room"
   scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
   
-  labs(title = "Coefficient of Variation (CV) & Variance Comparison",
-       subtitle = "Variance stability analysis across biological groups",
+  labs(title = "CV and variance of sample Shannon entropy",
+       subtitle = "Variation in sample Shannon entropy",
        y = "CV (%) = (SD / Mean) * 100") +
   theme_bw()
 

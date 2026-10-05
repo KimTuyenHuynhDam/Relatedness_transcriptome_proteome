@@ -1,3 +1,6 @@
+# Gene-wise nested linear models of raw TPM within sex or brain-region subsets.
+# Sex subsets adjust for region; region subsets adjust for sex.
+# BH adjustment is applied across genes within each subset.
 
 library(openxlsx)
 library(tidyverse)
@@ -24,7 +27,7 @@ mice_info = read.xlsx("./Rawdata/mice information.xlsx") %>%
 
 
 # Merge RNA_seq and mice_info
-# Assume the column "X" in RNA_seq corresponds to "Analysis.ID" in mice_info
+# X stores gene IDs; specimen column names are pivoted to Analysis.ID for the metadata join
 RNA_seq_long <- RNA_seq %>%
   pivot_longer(cols = -X, names_to = "Analysis.ID", values_to = "Expression") %>%
   inner_join(mice_info, by = c("Analysis.ID" = "Analysis.ID")) %>% rename(Gene = X)

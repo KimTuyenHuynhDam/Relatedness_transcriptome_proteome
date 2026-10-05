@@ -1,3 +1,6 @@
+# qPCR expression normalized to GAPDH after averaging technical replicates in Cq space.
+# Delta-delta Cq uses the control mean pooled across sex and generation.
+
 ################################################################################
 # 1. LIBRARIES & ENVIRONMENT SETUP
 ################################################################################
@@ -59,7 +62,7 @@ control_means <- analysis_prepared %>%
   filter(Treatment == "Ctrl") %>%
   summarise(across(starts_with("DeltaCq_"), mean, na.rm = TRUE))
 
-# Calculate Fold Change (2^-DDCq)
+# Calculate relative abundance against the pooled control mean (2^-DDCq)
 final_results <- analysis_prepared %>%
   mutate(
     DDCq_IL1B = `DeltaCq_IL-1B` - control_means$`DeltaCq_IL-1B`,
@@ -89,7 +92,7 @@ write.xlsx(final_results_no_outlier, 'final_results_remove_outlier(205-LPS-F2).x
 # 4. DATA PREPARATION FOR PLOTTING (Long Format)
 ################################################################################
 
-# Dataset 1: 2^-DeltaCq (Absolute Relative Expression)
+# Dataset 1: 2^-DeltaCq (GAPDH-normalized relative expression)
 baseline_2delta_data <- final_results_no_outlier %>%
   mutate(
     Group = paste(Sex, Generation, sep = "-"),
@@ -109,7 +112,7 @@ plot_data_pairs <- baseline_2delta_data %>%
                     levels = c("Ctrl-F1", "LPS-F1", "Ctrl-F2", "LPS-F2"))
   )
 
-# Dataset 3: Fold Change (LPS Induced Magnitude only)
+# Dataset 3: Post-LPS abundance relative to the pooled control calibrator
 plot_data_final <- final_results_no_outlier %>%
   filter(Treatment == "LPS") %>%
   mutate(Generation = factor(Generation, levels = c("F1", "F2"))) %>%
@@ -195,7 +198,7 @@ make_ctrl_plot <- function(gene_name, data) {
   return(p)
 }
 
-# Function 3: Fold Change Comparison Plot
+# Function 3: Post-LPS relative abundance plot
 make_fold_change_plot <- function(gene_name, data) {
   fold_data <- data %>% 
     filter(Gene == gene_name, Treatment == "LPS") %>%
@@ -220,7 +223,7 @@ make_fold_change_plot <- function(gene_name, data) {
     scale_fill_manual(values = c("Female-F1"="#f781bf", "Female-F2"="#e41a1c", 
                                  "Male-F1"="#a6cee3", "Male-F2"="#377eb8")) +
     theme_bw(base_size = 12) +
-    labs(y = paste(gene_name, "\n(Fold Induction)"), x = "") + 
+    labs(y = paste(gene_name, "\n(Relative abundance; pooled control)"), x = "") + 
     theme(legend.position = "none",
           axis.title.y = element_text(face = "bold", size = 16, margin = margin(r = 10)),
           axis.text.x = element_text(angle = 45, hjust = 1, face = "bold", size = 12),
@@ -240,7 +243,7 @@ p_tnfa <- make_gene_plot("TNFa", plot_data_pairs)
 fig1 <- (p_il1b / p_il6 / p_tnfa) + 
   plot_annotation(
     title = 'Multi-Generational Inflammatory Profile',
-    subtitle = 'LPS Response vs. Baseline Shifts',
+    subtitle = 'Transcript abundance under control and LPS conditions',
     theme = theme(plot.title = element_text(hjust = 0.5, face="bold", size=22),
                   plot.subtitle = element_text(hjust = 0.5, size=16, face="italic"))
   )
@@ -255,22 +258,22 @@ p3 <- make_ctrl_plot("TNFa", plot_data_pairs)
 fig2 <- (p1 / p2 / p3) + 
   plot_annotation(
     title = 'Baseline Inflammatory Profile',
-    subtitle = 'Generational and Sexual Dimorphism in Resting Expression',
+    subtitle = 'Untreated transcript abundance by generation and sex',
     theme = theme(plot.title = element_text(hjust = 0.5, face="bold", size=20),
                   plot.subtitle = element_text(hjust = 0.5, size=15))
   )
 print(fig2)
 ggsave("Figure_Ctrl_Baseline_Comparison.png", fig2, width = 8, height = 12, dpi = 300)
 
-# --- FIGURE 3: Fold Change Comparison (LPS Only) ---
+# --- FIGURE 3: Post-LPS relative abundance ---
 p1_fc <- make_fold_change_plot("IL-1B", plot_data_final)
 p2_fc <- make_fold_change_plot("IL6", plot_data_final)
 p3_fc <- make_fold_change_plot("TNFa", plot_data_final)
 
 fig3 <- (p1_fc / p2_fc / p3_fc) + 
   plot_annotation(
-    title = 'LPS-Induced Fold Change Comparison',
-    subtitle = 'Magnitude of Inflammatory Response Relative to Internal Control',
+    title = 'Post-LPS relative transcript abundance',
+    subtitle = 'Calibrated to the pooled control mean',
     theme = theme(plot.title = element_text(hjust = 0.5, face="bold", size=20),
                   plot.subtitle = element_text(hjust = 0.5, size=15))
   )

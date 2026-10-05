@@ -1,6 +1,10 @@
+# Brain RNA and plasma protein scores matched by gene.
+# RNA adjustment restores each gene mean after removing the tissue effect.
+# Paired comparisons match each gene's F1 and F2 gap values.
+
 # ==============================================================================
 # INTEGRATIVE OMICS: BRAIN RNA-SEQ & PLASMA PROTEOMICS 
-# TARGET: Systemic Mean Drift and Paired Statistical Comparison
+# TARGET: Gene-wise cross-assay scores and F1/F2 comparisons
 # ==============================================================================
 
 library(tidyverse)
@@ -11,8 +15,8 @@ library(gprofiler2)
 # 1. SETUP & DATA CLEANING 
 # ------------------------------------------------------------------------------
 
-out_v <- "Integrative omics (rm outliers)/Visualizations"
-out_t <- "Integrative omics (rm outliers)/Data_Tables"
+out_v <- "integrative omics (rm outliers)/Visualizations"
+out_t <- "integrative omics (rm outliers)/Data_Tables"
 if(!dir.exists(out_v)) dir.create(out_v, recursive = TRUE)
 if(!dir.exists(out_t)) dir.create(out_t, recursive = TRUE)
 
@@ -20,7 +24,7 @@ clean_id <- function(x) {
   x <- gsub("^X", "", x); x <- gsub("[[:punct:] ]", "", x); return(toupper(x))
 }
 
-# 2. RNA-SEQ: ALIGNMENT, FILTERING & RESIDUALIZATION
+# 2. RNA-SEQ: SPECIMEN-ID MATCHING, FILTERING & RESIDUALIZATION
 # ------------------------------------------------------------------------------
 mice_info <- read.xlsx("RNAseq-brain-F1,F2/Rawdata/mice information.xlsx") %>%
   filter(Sex == "F", !Analysis.ID %in% c('F2Fc_Rep6', 'F2Mm_Rep3')) %>%
@@ -33,7 +37,7 @@ colnames(RNA_seq) <- clean_id(colnames(RNA_seq))
 valid_ids <- intersect(mice_info$Match_ID, colnames(RNA_seq))
 rna_raw <- RNA_seq[, valid_ids]
 
-# Define groups based on kinship metadata
+# Define generation groups from the 0/50 metadata codes
 rna_f1_cols <- mice_info$Match_ID[mice_info$Relatedness == "0"] %>% intersect(valid_ids)
 rna_f2_cols <- mice_info$Match_ID[mice_info$Relatedness == "50"] %>% intersect(valid_ids)
 
@@ -63,7 +67,7 @@ pro_exp <- read.xlsx("proteomics/All_expression.xlsx")
 cols_to_drop <- grep("134_RA1", colnames(pro_exp))
 if(length(cols_to_drop) > 0) {
   pro_exp <- pro_exp[, -cols_to_drop]
-  message("Technical outlier (Sample 134) successfully removed.")
+  message("Sample 134 excluded.")
 }
 
 # Condense to unique genes (Mean of raw intensities, NO log transform yet)
@@ -117,40 +121,40 @@ df_fidelity <- data.frame(
   Rel_Change = (Gap_F2 + 0.01) / (Gap_F1 + 0.01)
 )
 
-# Threshold: Mean Drift + 1.5 SD + 20% relative change
+# Select positive gap change above mean + 1.5 SD and offset-adjusted ratio > 1.2
 drift_threshold <- mean(df_fidelity$Gap_Drift, na.rm = TRUE) + (1.5 * sd(df_fidelity$Gap_Drift, na.rm = TRUE))
 
 df_fidelity <- df_fidelity %>%
   mutate(Status = ifelse(Gap_Drift > drift_threshold & Rel_Change > 1.2, 
-                         "Decanalized Driver", "Stable"))
+                         "Decanalized Driver", "Other genes"))
 
 write.xlsx(df_fidelity, file.path(out_t, "Full_Integrative_Data_Final.xlsx"))
 
-# 5. VISUALIZATION 1: SYSTEMIC MEAN DRIFT (DENSITY)
+# 5. VISUALIZATION 1: CROSS-ASSAY SCORE DISTRIBUTIONS
 # ------------------------------------------------------------------------------
 mean_f1 <- mean(df_fidelity$Gap_F1, na.rm = TRUE)
 mean_f2 <- mean(df_fidelity$Gap_F2, na.rm = TRUE)
 ks_test <- ks.test(df_fidelity$Gap_F1, df_fidelity$Gap_F2)
 
 p1 <- ggplot(df_fidelity) +
-  geom_density(aes(x = Gap_F1, fill = "F1 (0%)"), alpha = 0.4) +
-  geom_density(aes(x = Gap_F2, fill = "F2 (50%)"), alpha = 0.4) +
+  geom_density(aes(x = Gap_F1, fill = "F1"), alpha = 0.4) +
+  geom_density(aes(x = Gap_F2, fill = "F2"), alpha = 0.4) +
   geom_vline(xintercept = mean_f1, color = "#377eb8", linetype = "dashed", size = 1) +
   geom_vline(xintercept = mean_f2, color = "#e41a1c", linetype = "dashed", size = 1) +
-  annotate("text", x = mean_f2 * 1.5, y = 0.5, label = paste0("KS p-value: ", format.pval(ks_test$p.value)), fontface = "bold") +
-  annotate("text", x = mean_f2 * 1.5, y = 0.4, label = paste0("Mean Shift: ", round(mean_f2 - mean_f1, 3))) +
-  scale_fill_manual(values = c("F1 (0%)" = "#377eb8", "F2 (50%)" = "#e41a1c"), name = "Kinship") +
-  theme_pubr() + labs(title = "Regulatory Fidelity Density", x = "mRNA-Protein Gap (Decoupling)", y = "Density")
+  annotate("text", x = mean_f2 * 1.5, y = 0.5, label = paste0("Gene-wise KS P: ", format.pval(ks_test$p.value)), fontface = "bold") +
+  annotate("text", x = mean_f2 * 1.5, y = 0.4, label = paste0("Mean score difference: ", round(mean_f2 - mean_f1, 3))) +
+  scale_fill_manual(values = c("F1" = "#377eb8", "F2" = "#e41a1c"), name = "Generation") +
+  theme_pubr() + labs(title = "Distribution of cross-assay scores", x = "Cross-assay score (arbitrary units)", y = "Density")
 
 ggsave(file.path(out_v, "Regulatory Fidelity Density.jpg"), p1, width = 7, height = 5)
 
-# 6. VISUALIZATION 2: SYSTEMIC REGULATORY DRIFT (VIOLIN) 
+# 6. VISUALIZATION 2: CROSS-ASSAY SCORE DISTRIBUTIONS 
 # ------------------------------------------------------------------------------
 df_long <- df_fidelity %>%
   dplyr::select(Gene, Gap_F1, Gap_F2) %>%
   pivot_longer(cols = c(Gap_F1, Gap_F2), names_to = "Generation", values_to = "Gap_Value") %>%
   mutate(Generation = factor(Generation, levels = c("Gap_F1", "Gap_F2"), 
-                             labels = c("F1 (Canalized)", "F2 (Decanalized)")))
+                             labels = c("F1", "F2")))
 
 p1b_violin <- ggplot(df_long, aes(x = Generation, y = Gap_Value, fill = Generation)) +
   geom_violin(alpha = 0.5, trim = FALSE, color = "black") +
@@ -158,15 +162,15 @@ p1b_violin <- ggplot(df_long, aes(x = Generation, y = Gap_Value, fill = Generati
   geom_jitter(shape = 16, position = position_jitter(0.15), alpha = 0.05, size = 0.1) +
   stat_compare_means(method = "t.test", paired = TRUE, label = "p.format", 
                      label.x = 1.5, size = 5, fontface = "bold") +
-  scale_fill_manual(values = c("F1 (Canalized)" = "#377eb8", "F2 (Decanalized)" = "#e41a1c")) +
+  scale_fill_manual(values = c("F1" = "#377eb8", "F2" = "#e41a1c")) +
   theme_pubr() +
-  labs(title = "Systemic Regulatory Drift (mRNA-Protein)", 
-       subtitle = "Paired comparison showing distribution and individual gene decoupling",
-       y = "Regulatory Gap (|RNA-PRO|/sqrt(2))", x = "")
+  labs(title = "Cross-assay scores by generation", 
+       subtitle = "F1 and F2 gaps paired by gene",
+       y = "Cross-assay score: |mean RNA - mean PRO|/sqrt(2)", x = "")
 
 ggsave(file.path(out_v, "Systemic Regulatory Drift (mRNA-Protein).jpg"), p1b_violin, width = 7, height = 8, dpi = 600)
 
-# 7. DRIVER IDENTIFICATION & PATHWAY ENRICHMENT (BUBBLE PLOT)
+# 7. GENE SELECTION & PATHWAY ENRICHMENT
 # ------------------------------------------------------------------------------
 shared_drivers <- df_fidelity %>% filter(Status == "Decanalized Driver")
 
@@ -191,12 +195,12 @@ if (!is.null(gostres$result)) {
     scale_color_gradient(low = "red", high = "blue", name = "adj. p-value") +
     scale_size_continuous(name = "Gene Count") +
     theme_bw() +
-    labs(title = "Functional Impact of Regulatory Drift",
-         subtitle = paste0("Enriched Pathways in Decanalized Drivers (n = ", nrow(shared_drivers), ")"),
-         x = "Fold Enrichment (Effect Magnitude)", y = "")
+    labs(title = "Pathway enrichment of selected genes",
+         subtitle = paste0("Selected genes (n = ", nrow(shared_drivers), ")"),
+         x = "Fold enrichment", y = "")
   
   ggsave(file.path(out_v, "Functional Impact of Systemic Regulatory Drift.jpg"), 
          p_bubble, width = 11, height = 8, dpi = 600)
   
-  cat("Bubble plot generated. Significance encoded by color, Impact by size.")
+  cat("Bubble plot generated. Adjusted enrichment P encoded by color; overlap count by size.")
 }

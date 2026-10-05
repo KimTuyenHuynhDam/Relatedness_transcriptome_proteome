@@ -1,3 +1,7 @@
+# WGCNA of log2(TPM + 1), adjusted for sex and brain region.
+# Module selection uses nominal P < 0.05; ME0 contains unassigned genes.
+# Pathway enrichment ratios use an assumed background of 31,878 genes.
+
 # WGCNA MASTER PIPELINE: PEROMYSCUS HYBRID RELATEDNESS
 # Includes: Residualization, Cluster Dendrogram, Boxplots, Native Pathways, and Hub Networks
 
@@ -96,10 +100,10 @@ rel_cor_sorted <- rel_cor[sort_order, , drop = FALSE]
 rel_p_sorted <- rel_p[sort_order, , drop = FALSE]
 
 jpeg(file.path(output_dir, "p_wgcna_heatmap_600dpi.jpg"), width = 8, height = 15, units = "in", res = 600)
-textMatrix <- paste("R: ", round(rel_cor_sorted, 2), " (p: ", signif(rel_p_sorted, 2), ")", sep = "")
+textMatrix <- paste("R: ", round(rel_cor_sorted, 2), " (nominal P: ", signif(rel_p_sorted, 2), ")", sep = "")
 dim(textMatrix) <- dim(rel_cor_sorted)
 
-labeledHeatmap(Matrix = rel_cor_sorted, xLabels = "Relatedness (F1 vs F2)", 
+labeledHeatmap(Matrix = rel_cor_sorted, xLabels = "Generation association (F1 vs F2)", 
                yLabels = rownames(rel_cor_sorted), ySymbols = rownames(rel_cor_sorted), 
                colors = blueWhiteRed(50), textMatrix = textMatrix,
                xLabelsAngle = 0, xLabelsAdj = 0.5, cex.text = 0.6, zlim = c(-1,1))
@@ -120,7 +124,7 @@ results_summary <- data.frame(ME_Name = rownames(rel_cor_sorted),
 
 write.xlsx(results_summary, file.path(output_dir, "table_SIGNIFICANT_MODULE_SUMMARY.xlsx"))
 
-# 6. MASTER PATHWAY LOOP (FDR < 0.05, Sort by Fold Enrichment) ------------
+# 6. PATHWAY LOOP (g:Profiler default correction; sort by enrichment ratio) -----
 print("Step 4: Running Native Pathway Analysis...")
 pathway_excel_list <- list()
 fig_path <- file.path(output_dir, "Pathway_Plots_Final")
@@ -160,22 +164,22 @@ for(group_name in names(groups_to_analyze)) {
   } else {
     m_info <- results_summary %>% filter(ME_Name == group_name)
     r_lbl <- ifelse(m_info$Rank_Pos == 1, " (Top Pos)", ifelse(m_info$Rank_Neg == 1, " (Top Neg)", ""))
-    p_title <- paste("Module:", group_name, r_lbl)
-    p_sub <- paste0("R = ", round(m_info$R_Value, 2), " | p = ", format_p(m_info$P_Value))
+    p_title <- paste("Selected gene set:", group_name, r_lbl)
+    p_sub <- paste0("R = ", round(m_info$R_Value, 2), " | nominal P = ", format_p(m_info$P_Value))
   }
   
   p <- ggplot(head(res_df, 15), aes(x = Fold_Enrichment, y = reorder(term_name, Fold_Enrichment))) +
     geom_point(aes(size = intersection_size, color = p_value)) +
     scale_color_gradient(low = "red", high = "blue") + theme_bw() +
-    labs(title = p_title, subtitle = p_sub, x = "Fold Enrichment", y = "Pathway")
+    labs(title = p_title, subtitle = p_sub, x = "Enrichment ratio (assumed background: 31,878 genes)", y = "Pathway")
   
   ggsave(filename = paste0("Pathway_", group_name, ".jpg"), plot = p, path = fig_path, width = 9, height = 7, dpi = 600)
 }
 
 write.xlsx(pathway_excel_list, file.path(output_dir, "MASTER_PATHWAY_RESULTS.xlsx"))
 
-# 7. VALIDATION BOXPLOTS (p < 0.05) ----------------------------------------
-print("Step 5: Generating Boxplots for all Significant Modules...")
+# 7. EIGENGENE DISPLAYS (nominal selection P < 0.05) -----------------------
+print("Step 5: Plotting selected eigengenes...")
 
 for(i in seq_len(nrow(results_summary))) {
   mod_name <- results_summary$ME_Name[i]
@@ -184,10 +188,12 @@ for(i in seq_len(nrow(results_summary))) {
   
   p <- ggplot(boxplot_data, aes(x = Relatedness, y = Expression, fill = Relatedness)) +
     geom_boxplot(outlier.shape = NA, alpha = 0.6) + geom_jitter(width = 0.2, size = 2, alpha = 0.5) +
-    theme_pubr() + scale_fill_manual(values = c("0" = "#66c2a5", "50" = "#fc8d62")) +
-    labs(title = paste("Module Validation:", mod_name), 
-         subtitle = paste0("R = ", round(results_summary$R_Value[i], 2), " | p = ", format_p(results_summary$P_Value[i])),
-         y = "Adjusted Eigengene", x = "Relatedness (F1=0 vs F2=50)") + 
+    theme_pubr() + scale_fill_manual(values = c("0" = "#66c2a5", "50" = "#fc8d62"),
+                                   name = "Generation", labels = c("0" = "F1", "50" = "F2")) +
+    scale_x_discrete(labels = c("0" = "F1", "50" = "F2")) +
+    labs(title = if (mod_name == "ME0") "Unassigned-gene eigengene (ME0)" else paste("Adjusted eigengene:", mod_name), 
+         subtitle = paste0("R = ", round(results_summary$R_Value[i], 2), " | nominal P = ", format_p(results_summary$P_Value[i])),
+         y = "Adjusted Eigengene", x = "Generation") + 
     stat_compare_means(method = "t.test", label = "p.signif")
   
   ggsave(filename = paste0("p_boxplot_", mod_name, ".jpg"), plot = p, path = output_dir, width = 6, height = 5, dpi = 600)
@@ -219,7 +225,7 @@ for(i in seq_len(nrow(results_summary))) {
                            nodeAttr = moduleColors[inModule])
   
   # Isolate Top 30 Hubs for R Visualization
-  # Use original names for connectivity to avoid "unrecognized gene" warnings
+  # Use matrix gene names for connectivity calculations
   nTop <- 30
   IMConn <- softConnectivity(datExpr[, modProbes], power = softPower)
   top <- (rank(-IMConn) <= nTop)

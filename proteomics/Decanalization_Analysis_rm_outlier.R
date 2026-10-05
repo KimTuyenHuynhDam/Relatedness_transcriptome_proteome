@@ -1,6 +1,11 @@
+# Plasma proteomic entropy, centroid distances and protein variance.
+# Missing values use 0.95 times the within-sample minimum positive log value.
+# Protein Levene tests use nominal P values.
+# Positive/negative log2 ratios indicate greater/lower F2 variance, respectively.
+
 # ==============================================================================
 # PEROMYSCUS PROTEOMICS: DECANALIZATION & INSTABILITY PIPELINE
-# Upgraded with Group-Wise Filtering & Technical Outlier Removal
+# Group-wise filtering and specimen exclusion
 # ==============================================================================
 
 # 1. LOAD REQUIRED PACKAGES
@@ -20,12 +25,12 @@ pro_exp <- read.xlsx("All_expression.xlsx")
 
 # ==============================================================================
 # REMOVE TECHNICAL OUTLIERS
-# Removing F1 sample 134 (Sample [10]) due to massive mass-spec dropout
+# Exclude F1 sample 134 following the protein-detection screen
 # ==============================================================================
 cols_to_drop <- grep("134_RA1", colnames(pro_exp))
 if(length(cols_to_drop) > 0) {
   pro_exp <- pro_exp[, -cols_to_drop]
-  message("Technical outlier (Sample 134) successfully removed.")
+  message("Sample 134 excluded.")
 }
 
 # Define the Thresholds for sensitivity analysis
@@ -66,7 +71,7 @@ for (i in seq_along(thresholds)) {
   # B. Log2 Transformation
   df_log <- log2(df_filtered + 1)
   
-  # C. Imputation: Down-shifted Normal Distribution
+  # C. Deterministic within-sample minimum substitution on the log scale
   df_imputed <- apply(df_log, 2, function(x) {
     temp <- x
     temp[temp == 0] <- NA
@@ -103,7 +108,7 @@ for (i in seq_along(thresholds)) {
     left_join(id_map, by = "Sample")
   
   # ------------------------------------------------------------------------------
-  # 5. DECANALIZATION METRIC: UNBIASED INSTABILITY SCORE
+  # 5. EUCLIDEAN DISTANCE TO OWN-GENERATION CENTROID (self included)
   # ------------------------------------------------------------------------------
   f1_centroid <- rowMeans(df_imputed[, groups == "F1"])
   f2_centroid <- rowMeans(df_imputed[, groups == "F2"])
@@ -144,7 +149,7 @@ for (i in seq_along(thresholds)) {
     Pval = v_pvals
   ) %>% 
     filter(!is.na(Gene), Gene != "NA") %>%
-    mutate(Status = case_when(Pval < 0.05 ~ "Significantly Unstable (p < 0.05)", TRUE ~ "Stable"))
+    mutate(Status = case_when(Pval < 0.05 ~ "Nominal Levene P < 0.05", TRUE ~ "Other proteins"))
   
   # ------------------------------------------------------------------------------
   # 7. EXPORT PUBLICATION-READY FIGURES (300 DPI TIFF)
@@ -155,7 +160,7 @@ for (i in seq_along(thresholds)) {
                   add = "jitter", add.params = list(size = 2, alpha = 0.6)) +
     scale_fill_manual(values = pub_colors) +
     stat_compare_means(method = "t.test", label = "p.format", label.x = 1.5, size = 5) +
-    labs(title = "Global Proteomic Complexity", y = "Shannon Entropy (H)") +
+    labs(title = "Shannon entropy of processed protein abundances", y = "Shannon Entropy (H)") +
     theme_pubr(base_size = 14) + theme(legend.position = "none")
   ggsave(paste0(main_dir, "/Figures/Fig1_Shannon_Entropy.tiff"), p1, width = 5, height = 6, dpi = 300)
   
@@ -165,8 +170,8 @@ for (i in seq_along(thresholds)) {
     stat_ellipse(aes(fill = Group), geom = "polygon", alpha = 0.15) +
     scale_color_manual(values = pub_colors) + scale_fill_manual(values = pub_colors) +
     theme_pubr(base_size = 14) + 
-    labs(title = "Proteomic State Drift (PCA)", 
-         subtitle = paste("PERMANOVA p =", format.pval(perm_p_val, digits=3)))
+    labs(title = "PCA of plasma protein abundance", 
+         subtitle = paste("Unscaled-matrix PERMANOVA P =", format.pval(perm_p_val, digits=3)))
   ggsave(paste0(main_dir, "/Figures/Fig2_PCA_Drift.tiff"), p2, width = 7, height = 5, dpi = 300)
   
   # Fig 3: Instability Boxplot
@@ -174,8 +179,8 @@ for (i in seq_along(thresholds)) {
                   add = "jitter", add.params = list(size = 2, alpha = 0.6)) +
     scale_fill_manual(values = pub_colors) +
     stat_compare_means(method = "wilcox.test", label = "p.format", label.x = 1.5, size = 5) +
-    labs(title = "Proteomic Instability Score", 
-         subtitle = "Intra-group stochastic noise",
+    labs(title = "Distance to generation-specific centroid", 
+         subtitle = "Filtered and imputed protein abundances",
          y = "Distance from Respective Centroid") +
     theme_pubr(base_size = 14) + theme(legend.position = "none")
   ggsave(paste0(main_dir, "/Figures/Fig3_Instability_Boxplot.tiff"), p3, width = 5, height = 6, dpi = 300)
@@ -185,21 +190,21 @@ for (i in seq_along(thresholds)) {
     geom_density(alpha = 0.5, color = "black") +
     scale_fill_manual(values = pub_colors) +
     theme_pubr(base_size = 14) +
-    labs(title = "Distribution of Instability", 
-         subtitle = paste("Kolmogorov-Smirnov test p =", format.pval(ks_res$p.value, digits = 3)),
-         x = "Instability Score (Distance)", y = "Density")
+    labs(title = "Distribution of centroid distances", 
+         subtitle = paste("Kolmogorov-Smirnov P =", format.pval(ks_res$p.value, digits = 3)),
+         x = "Distance to generation-specific centroid", y = "Density")
   ggsave(paste0(main_dir, "/Figures/Fig4_Instability_Density.tiff"), p4, width = 7, height = 5, dpi = 300)
   
   # Fig 5: Levene's Volcano
   p5 <- ggplot(volcano_df, aes(x = Log2VarRatio, y = -log10(Pval))) +
     geom_point(aes(color = Status, shape = Status), size = 3, alpha = 0.8) +
-    scale_color_manual(values = c("Significantly Unstable (p < 0.05)" = "#E64B35FF", "Stable" = "grey70")) +
+    scale_color_manual(values = c("Nominal Levene P < 0.05" = "#E64B35FF", "Other proteins" = "grey70")) +
     scale_shape_manual(values = c(17, 16)) + 
     geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "black") +
     geom_vline(xintercept = 0, linetype = "solid", color = "black", alpha = 0.5) +
     geom_text_repel(data = subset(volcano_df, Pval < 0.005), aes(label = Gene), max.overlaps = 15, size = 4) +
     theme_pubr(base_size = 14) +
-    labs(title = "Differential Variability: F2 vs F1", 
+    labs(title = "Protein variance ratios: nominal Levene comparisons", 
          x = expression(Log[2]~Variance~Ratio~(F2/F1)), 
          y = expression(-Log[10]~Levene~P-value)) +
     theme(legend.position = "bottom", legend.title = element_blank())
@@ -231,4 +236,4 @@ for (i in seq_along(thresholds)) {
   
 }
 
-message("Pipeline complete. Look for the folder 'Decanalization_Analysis_Filter_70' for your primary publication figures.")
+message("Pipeline complete. Figure 5 tables and plots: Decanalization_Analysis_rm_134_Filter_70.")
